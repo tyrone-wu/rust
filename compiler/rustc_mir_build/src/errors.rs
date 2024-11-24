@@ -446,8 +446,8 @@ pub(crate) struct UnsafeNotInheritedNote {
 }
 
 pub(crate) struct UnsafeNotInheritedLintNote {
-    pub(crate) signature_span: Span,
-    pub(crate) body_span: Span,
+    pub(crate) signature_span: Option<Span>,
+    pub(crate) unsafe_span: Span,
 }
 
 impl Subdiagnostic for UnsafeNotInheritedLintNote {
@@ -456,12 +456,14 @@ impl Subdiagnostic for UnsafeNotInheritedLintNote {
         diag: &mut Diag<'_, G>,
         _f: &F,
     ) {
-        diag.span_note(self.signature_span, fluent::mir_build_unsafe_fn_safe_body);
-        let body_start = self.body_span.shrink_to_lo();
-        let body_end = self.body_span.shrink_to_hi();
+        if let Some(span) = self.signature_span {
+            diag.span_note(span, fluent::mir_build_unsafe_fn_safe_body);
+        }
+        let unsafe_start = self.unsafe_span.shrink_to_lo();
+        let unsafe_end = self.unsafe_span.shrink_to_hi();
         diag.tool_only_multipart_suggestion(
             fluent::mir_build_wrap_suggestion,
-            vec![(body_start, "{ unsafe ".into()), (body_end, "}".into())],
+            vec![(unsafe_start, "unsafe { ".into()), (unsafe_end, " }".into())],
             Applicability::MachineApplicable,
         );
     }

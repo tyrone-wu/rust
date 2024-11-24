@@ -41,9 +41,9 @@ struct UnsafetyVisitor<'a, 'tcx> {
     inside_adt: bool,
     warnings: &'a mut Vec<UnusedUnsafeWarning>,
 
-    /// Flag to ensure that we only suggest wrapping the entire function body in
-    /// an unsafe block once.
-    suggest_unsafe_block: bool,
+    /// Flag to ensure that we only emit `mir_build_unsafe_fn_safe_body` once on
+    /// the function signature.
+    suggest_unsafe_fn_safe_body: bool,
 }
 
 impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
@@ -164,9 +164,9 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
                         self.tcx,
                         self.hir_context,
                         span,
-                        self.suggest_unsafe_block,
+                        self.suggest_unsafe_fn_safe_body,
                     );
-                    self.suggest_unsafe_block = false;
+                    self.suggest_unsafe_fn_safe_body = false;
                 }
             }
             SafetyContext::Safe => {
@@ -216,7 +216,7 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
                 typing_env: self.typing_env,
                 inside_adt: false,
                 warnings: self.warnings,
-                suggest_unsafe_block: self.suggest_unsafe_block,
+                suggest_unsafe_fn_safe_body: self.suggest_unsafe_fn_safe_body,
             };
             // params in THIR may be unsafe, e.g. a union pattern.
             for param in &inner_thir.params {
@@ -714,22 +714,15 @@ impl UnsafeOpKind {
         tcx: TyCtxt<'_>,
         hir_id: HirId,
         span: Span,
-        suggest_unsafe_block: bool,
+        suggest_unsafe_fn_safe_body: bool,
     ) {
         let parent_id = tcx.hir().get_parent_item(hir_id);
         let parent_owner = tcx.hir_owner_node(parent_id);
         let should_suggest = parent_owner.fn_sig().is_some_and(|sig| sig.header.is_unsafe());
-        let unsafe_not_inherited_note = if should_suggest {
-            suggest_unsafe_block.then(|| {
-                let body_span = tcx.hir().body(parent_owner.body_id().unwrap()).value.span;
-                UnsafeNotInheritedLintNote {
-                    signature_span: tcx.def_span(parent_id.def_id),
-                    body_span,
-                }
-            })
-        } else {
-            None
-        };
+        let unsafe_not_inherited_note = should_suggest.then_some(UnsafeNotInheritedLintNote {
+            signature_span: suggest_unsafe_fn_safe_body.then_some(tcx.def_span(parent_id.def_id)),
+            unsafe_span: span.source_callsite(),
+        });
         // FIXME: ideally we would want to trim the def paths, but this is not
         // feasible with the current lint emission API (see issue #106126).
         match self {
@@ -1069,7 +1062,7 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
         typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
         inside_adt: false,
         warnings: &mut warnings,
-        suggest_unsafe_block: true,
+        suggest_unsafe_fn_safe_body: true,
     };
     // params in THIR may be unsafe, e.g. a union pattern.
     for param in &thir.params {
