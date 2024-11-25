@@ -74,4 +74,13 @@ pub unsafe fn unsafe_in_external_macro() {
     external_unsafe_macro::unsafe_macro!();
 }
 
+pub unsafe fn incomplete_unsafe_in_unsafe_fn() { unsafe {
+    //~^ NOTE an unsafe function restricts its caller, but its body is safe by default
+    unsf(); //~ ERROR call to unsafe function `unsf` is unsafe
+    //~^ NOTE call to unsafe function
+    //~| NOTE for more information, see issue #71668
+    //~| NOTE consult the function's documentation
+    unsafe { unsf(); }
+}}
+
 fn main() {}
